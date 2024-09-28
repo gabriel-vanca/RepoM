@@ -22,6 +22,7 @@ using RepoM.Api.Plugins;
 using RepoM.App.i18n;
 using RepoM.App.Plugins;
 using RepoM.App.Services;
+using RepoM.App.Configuration;
 using Serilog;
 using Serilog.Core;
 using SimpleInjector;
@@ -95,45 +96,43 @@ public partial class App : Application
         // By default, WPF uses en-US as the culture, regardless of the system settings.
         // see: https://stackoverflow.com/a/520334/704281
         FrameworkElement.LanguageProperty.OverrideMetadata(
-                                                           typeof(FrameworkElement),
-                                                           new FrameworkPropertyMetadata(
-                                                                                         XmlLanguage.GetLanguage(CultureInfo.CurrentCulture.IetfLanguageTag)));
+            typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(System.Windows.Markup.XmlLanguage.GetLanguage(System.Globalization.CultureInfo.CurrentCulture.IetfLanguageTag)));
 
-        Current.Resources.MergedDictionaries[0] = ResourceDictionaryTranslationService.ResourceDictionary;
-        _notifyIcon                             = FindResource("NotifyIcon") as TaskbarIcon;
+        Application.Current.Resources.MergedDictionaries[0] = ResourceDictionaryTranslationService.ResourceDictionary;
+        _notifyIcon = FindResource("NotifyIcon") as TaskbarIcon;
 
         var fileSystem = new FileSystem();
 
         // Create instance without DI, because we need it before the last registration of services.
         IHmacService hmacService = new HmacSha256Service();
-        IPluginFinder pluginFinder = new PluginFinder(fileSystem,
-                                                      hmacService);
+        IPluginFinder pluginFinder = new PluginFinder(fileSystem, hmacService);
 
-        IConfiguration config        = SetupConfiguration();
+        var factory = new ConfigBasedAppDataPathProviderFactory(e.Args, fileSystem);
+        AppDataPathProvider appDataProvider = factory.Create();
+
+        IConfiguration config = CreateLoggerConfiguration(appDataProvider);
         ILoggerFactory loggerFactory = CreateLoggerFactory(config);
-        ILogger        logger        = loggerFactory.CreateLogger(nameof(App));
+
+        ILogger logger = loggerFactory.CreateLogger(nameof(App));
         logger.LogInformation("Started");
         Bootstrapper.RegisterLogging(loggerFactory);
-        Bootstrapper.RegisterServices(fileSystem);
-        await Bootstrapper.RegisterPlugins(pluginFinder,
-                                           fileSystem,
-                                           loggerFactory)
-                          .ConfigureAwait(true);
+        Bootstrapper.RegisterServices(fileSystem, appDataProvider);
+        await Bootstrapper.RegisterPlugins(pluginFinder, fileSystem, loggerFactory, appDataProvider).ConfigureAwait(true);
 
-    #if DEBUG
-        Bootstrapper.Container.Verify(VerificationOption.VerifyAndDiagnose);
-    #else
-    Bootstrapper.Container.Options.EnableAutoVerification = false;
-    #endif
+        var ensureStartup = new EnsureStartup(fileSystem, appDataProvider);
+        await ensureStartup.EnsureFilesAsync().ConfigureAwait(true);
 
-        EnsureStartup ensureStartup = Bootstrapper.Container.GetInstance<EnsureStartup>();
-        await ensureStartup.EnsureFilesAsync()
-                           .ConfigureAwait(true);
+#if DEBUG
+        Bootstrapper.Container.Verify(SimpleInjector.VerificationOption.VerifyAndDiagnose);
+#else
+        Bootstrapper.Container.Options.EnableAutoVerification = false;
+#endif
 
         UseRepositoryMonitor(Bootstrapper.Container);
 
-        _moduleService     = Bootstrapper.Container.GetInstance<ModuleService>();
-        _hotKeyService     = Bootstrapper.Container.GetInstance<HotKeyService>();
+        _moduleService = Bootstrapper.Container.GetInstance<ModuleService>();
+        _hotKeyService = Bootstrapper.Container.GetInstance<HotKeyService>();
         _windowSizeService = Bootstrapper.Container.GetInstance<WindowSizeService>();
 
         _hotKeyService.Register();
@@ -141,15 +140,14 @@ public partial class App : Application
 
         try
         {
-            await _moduleService.StartAsync()
-                                .ConfigureAwait(false); // don't care about ui thread
+            await _moduleService.StartAsync().ConfigureAwait(false); // don't care about ui thread
         }
         catch (Exception exception)
         {
-            logger.LogError(exception,
-                            "Could not start all modules.");
+            logger.LogError(exception, "Could not start all modules.");
         }
     }
+
 
     protected override void OnExit(ExitEventArgs e)
     {
@@ -170,18 +168,16 @@ public partial class App : Application
 
     private static IConfiguration CreateLoggerConfiguration(AppDataPathProvider appDataProvider)
     {
-        const string FILENAME = "appsettings.serilog.json";
-        var fullFilename = Path.Combine(DefaultAppDataPathProvider.Instance.AppDataPath,
-                                        FILENAME);
+        const string FILENAME     = "appsettings.serilog.json";
+        var          fullFilename = Path.Combine(appDataProvider.AppDataPath, FILENAME);
 
         IConfigurationBuilder builder = new ConfigurationBuilder()
                                        .SetBasePath(Directory.GetCurrentDirectory())
-                                       .AddJsonFile(fullFilename,
-                                                    true,
-                                                    false)
+                                       .AddJsonFile(fullFilename, optional: true, reloadOnChange: false)
                                        .AddEnvironmentVariables();
         return builder.Build();
     }
+
 
     private static ILoggerFactory CreateLoggerFactory(IConfiguration config)
     {

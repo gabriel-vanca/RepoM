@@ -3,6 +3,7 @@ namespace RepoM.App.Services;
 using System;
 using System.IO.Abstractions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.CommandLine; // Add this using directive
 using Microsoft.Extensions.FileProviders;
 using RepoM.Api.IO;
 using RepoM.App.Configuration;
@@ -20,7 +21,7 @@ internal class ConfigBasedAppDataPathProviderFactory
     }
 
     public ConfigBasedAppDataPathProviderFactory(string[] args, IFileSystem fileSystem, IFileProvider fileProvider)
-        :this(args, fileSystem)
+        : this(args, fileSystem)
     {
         _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
     }
@@ -46,7 +47,7 @@ internal class ConfigBasedAppDataPathProviderFactory
 #if DEBUG
         builder.AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: false);
 #endif
-        
+
         builder.AddCommandLine(args);
 
         return builder.Build();

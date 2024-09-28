@@ -46,7 +46,6 @@
 
     <Window.Resources>
         <ResourceDictionary>
-            <converters:UtcToHumanizedLocalDateTimeConverter x:Key="UtcToHumanizedLocalDateTimeConverter" />
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
             <!--  Key bindings  -->
