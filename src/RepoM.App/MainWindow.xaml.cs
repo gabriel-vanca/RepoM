@@ -141,6 +141,7 @@ public partial class MainWindow : FluentWindow
 
 
         //ApplicationThemeManager.Apply(ApplicationTheme.Light);
+        //ApplicationThemeManager.Apply(ApplicationTheme.HighContrast);
 
         ApplicationThemeManager.Changed += OnAppThemeChange;
 
@@ -1074,7 +1075,7 @@ public partial class MainWindow : FluentWindow
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Could not invoke action on current repository.");
+            //_logger.LogError(exception, "Could not invoke action on current repository.");
         }
     }
 }
